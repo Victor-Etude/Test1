@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WLCA Process — Interactive Gantt</title>
+<style>
+  :root {
+    --accent: #1f7a4d;            /* Etude green — change this one value to rebrand */
+    --accent-soft: #e6f2ec;
+    --ink: #1a1a1a;
+    --ink-soft: #5f6b66;
+    --ink-faint: #93a09a;
+    --line: #e3e7e5;
+    --bg: #ffffff;
+    --surface: #f7f9f8;
+    --radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  .app { max-width: 1000px; margin: 0 auto; padding: 18px 20px 24px; }
+  header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  .sub { font-size: 13px; color: var(--ink-soft); }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .stage-btn {
+    padding: 5px 12px; font-size: 13px; border: 1px solid var(--line);
+    border-radius: 20px; background: var(--bg); color: var(--ink); cursor: pointer;
+    transition: all .12s ease; font-family: inherit;
+  }
+  .stage-btn:hover { border-color: var(--accent); }
+  .stage-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .spacer { flex: 1; }
+  .mini-btn {
+    padding: 5px 10px; font-size: 12px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--ink-soft); cursor: pointer; font-family: inherit;
+  }
+  .mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; margin-bottom: 12px; padding: 10px 14px; background: var(--surface); border-radius: var(--radius); }
+  .meta label { font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+  .meta input[type="date"], .meta select {
+    font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font-family: inherit; color: var(--ink); background: var(--bg);
+  }
+  .stat { font-size: 13px; }
+  .stat b { font-weight: 600; color: var(--accent); }
+
+  .gantt-scroll { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); max-height: 460px; }
+  svg { display: block; font-family: inherit; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  footer { margin-top: 16px; font-size: 12px; color: var(--ink-faint); line-height: 1.6; border-top: 1px solid var(--line); padding-top: 12px; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 50; max-width: 280px;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgba(0,0,0,.10); padding: 10px 12px; font-size: 12px;
+    color: var(--ink); opacity: 0; transition: opacity .1s ease;
+  }
+  #tooltip .tt-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  #tooltip .tt-row { color: var(--ink-soft); margin-bottom: 2px; }
+  #tooltip .tt-note { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--ink-soft); font-style: italic; }
+  .empty { padding: 24px; text-align: center; color: var(--ink-faint); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>WLCA process — interactive Gantt</h1>
+    <span class="sub">Select the RIBA stages you intervene on; the plan recompacts with dependencies preserved.</span>
+  </header>
+
+  <div class="toolbar" id="stageBar">
+    <button class="stage-btn on" data-stage="0">Stage 0</button>
+    <button class="stage-btn on" data-stage="1">Stage 1</button>
+    <button class="stage-btn on" data-stage="2">Stage 2</button>
+    <button class="stage-btn on" data-stage="3">Stage 3</button>
+    <button class="stage-btn on" data-stage="4">Stage 4</button>
+    <button class="stage-btn on" data-stage="5">Stage 5</button>
+    <button class="stage-btn on" data-stage="6">Stage 6</button>
+    <button class="stage-btn on" data-stage="7">Stage 7</button>
+    <span class="spacer"></span>
+    <button class="mini-btn" id="allBtn">All</button>
+    <button class="mini-btn" id="noneBtn">None</button>
+  </div>
+
+  <div class="meta">
+    <label>Project start
+      <input type="date" id="startDate" value="2024-01-08">
+    </label>
+    <label>Colour by
+      <select id="colorBy">
+        <option value="phase">Activity phase</option>
+        <option value="stage">RIBA stage</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <span class="stat" id="summary"></span>
+  </div>
+
+  <div class="gantt-scroll"><svg id="gantt" xmlns="http://www.w3.org/2000/svg"></svg></div>
+
+  <div class="legend" id="legend"></div>
+
+  <footer>
+    Durations are illustrative WLCA-team effort per activity, not RIBA programme durations. Set a real project start date above to read calendar dates in the tooltips.
+    Edit the <code>--accent</code> CSS variable to match Etude brand colour. To embed in Notion: host this file (GitHub Pages / Vercel / Netlify), then in Notion type <code>/embed</code> and paste the URL.
+  </footer>
+</div>
+<div id="tooltip"></div>
+
+<script>
+(function(){
+  const ACTIVITIES = [
+    {id:'s0a', name:'Fee proposal scoping', stage:0, phase:'Setup', dur:7, gap:0, note:'Lock scope + iteration count before fee sign-off.'},
+    {id:'s0b', name:'Carbon target proposal', stage:0, phase:'Setup', dur:5, gap:0, note:'Reference LETI / RIBA 2030 / GLA; agree in writing.'},
+    {id:'s0c', name:'WLCA scope in appointment', stage:0, phase:'Milestone', dur:3, gap:0, note:'Scope contractualised — protects fee.'},
+    {id:'s1a', name:'Methodology + tier lock', stage:1, phase:'Setup', dur:5, gap:0, note:'Calculator version + database tier per material category.'},
+    {id:'s1b', name:'Info request schedule issued', stage:1, phase:'Data ask', dur:3, gap:0, note:'Share at first design workshop; PM owns chase cadence.'},
+    {id:'s2a', name:'Info requests issued (Stage 2)', stage:2, phase:'Data ask', dur:5, gap:0, note:'GIA, massing, structural strategy, facade, MEP strategy.'},
+    {id:'s2b', name:'Architect concept data received', stage:2, phase:'Data wait', dur:14, gap:0, note:'Bottleneck — chase via PM, not informally.'},
+    {id:'s2c', name:'Quantity entry + tier assignment', stage:2, phase:'Calculation', dur:5, gap:0, note:'Apply confidence flags per RICS element category.'},
+    {id:'s2d', name:'Hotspot + optioneering', stage:2, phase:'Analysis', dur:5, gap:0, note:'Tie options to upcoming design decision deadlines.'},
+    {id:'s2e', name:'Stage 2 report + QA + delivery', stage:2, phase:'Milestone', dur:8, gap:0, note:'First WLCA gateway. Report as ESTIMATE with uncertainty band.'},
+    {id:'s3a', name:'Info requests issued (Stage 3)', stage:3, phase:'Data ask', dur:5, gap:0, note:'Coordinated design + structural + MEP scheme data.'},
+    {id:'s3b', name:'Coordinated data received', stage:3, phase:'Data wait', dur:14, gap:0, note:'Push for tonnages even at scheme stage; rebar separate.'},
+    {id:'s3c', name:'Refined entry + sensitivity', stage:3, phase:'Calculation', dur:10, gap:0, note:'Tornado chart of top-5 variables drives Stage 4 priorities.'},
+    {id:'s3d', name:'Stage 3 report + QA + delivery', stage:3, phase:'Milestone', dur:10, gap:0, note:'Second WLCA gateway. Design freeze should hit after this.'},
+    {id:'s4a', name:'Info requests issued (Stage 4)', stage:4, phase:'Data ask', dur:5, gap:0, note:'NBS specs, concrete mix, final quantities, MEP manufacturers.'},
+    {id:'s4b', name:'Final design data received', stage:4, phase:'Data wait', dur:21, gap:0, note:'Set MEP data deadline 2 weeks before WLCA delivery.'},
+    {id:'s4c', name:'NBS mapping + final entry', stage:4, phase:'Calculation', dur:10, gap:0, note:'Map NBS clauses to EPDs / generic data; cross-check ICE v4.'},
+    {id:'s4d', name:'Module B/C/D modelling', stage:4, phase:'Calculation', dur:7, gap:0, note:'Report D separately — never net off A-C (BS EN 15978).'},
+    {id:'s4e', name:'RICS-compliant report draft', stage:4, phase:'Reporting', dur:10, gap:0, note:'Match RICS WLCA 2nd Ed reporting structure exactly.'},
+    {id:'s4f', name:'QA + Director sign-off', stage:4, phase:'QA & sign-off', dur:5, gap:0, note:'Independent reviewer; Director sign-off mandatory pre-issue.'},
+    {id:'s4g', name:'Targets in tender docs', stage:4, phase:'Milestone', dur:3, gap:0, note:'Third WLCA gateway + planning version. Include monitoring clause in tender.'},
+    {id:'s5a', name:'Quarterly variance report Q1', stage:5, phase:'Reporting', dur:5, gap:0, note:'Monthly data cadence in preliminaries; report quarterly.'},
+    {id:'s5b', name:'Quarterly variance report Q2', stage:5, phase:'Reporting', dur:5, gap:85, note:'Flag variance >10% with corrective recommendation.'},
+    {id:'s5c', name:'Quarterly variance report Q3', stage:5, phase:'Reporting', dur:5, gap:85, note:'Validate supplier EPDs: EN 15804, <5yr, geographic scope.'},
+    {id:'s5d', name:'Quarterly variance report Q4', stage:5, phase:'Reporting', dur:5, gap:85, note:'Spot-check claimed transport origins vs delivery records.'},
+    {id:'s6a', name:'As-built data collection', stage:6, phase:'Data wait', dur:21, gap:0, note:'Include WLCA close-out as named contractor deliverable.'},
+    {id:'s6b', name:'Design vs as-built reconciliation', stage:6, phase:'Analysis', dur:14, gap:0, note:'Every >10% element variance needs documented root cause.'},
+    {id:'s6c', name:'Final report + lessons learned', stage:6, phase:'Reporting', dur:14, gap:0, note:'Lessons feed Etude database tier assumptions.'},
+    {id:'s6d', name:'Final sign-off + delivery', stage:6, phase:'Milestone', dur:5, gap:0, note:"Building's carbon birth certificate. Deliver Excel + PDF."},
+    {id:'s7a', name:'Year 1 operational data collection', stage:7, phase:'Data wait', dur:28, gap:90, note:'Stage 7 retainer must be pre-agreed at Stage 0.'},
+    {id:'s7b', name:'Year 1 in-use carbon review', stage:7, phase:'Reporting', dur:14, gap:0, note:'Update grid factor annually; disaggregate performance gap.'},
+  ];
+
+  const PHASE_COLOR = {
+    'Setup': '#9ca3af',
+    'Data ask': '#fcd34d',
+    'Data wait': '#f59e0b',
+    'Calculation': '#3b82f6',
+    'Analysis': '#6366f1',
+    'Reporting': '#14b8a6',
+    'QA & sign-off': '#8b5cf6',
+    'Milestone': '#1f7a4d',
+  };
+  const STAGE_COLOR = {
+    0:'#9ca3af', 1:'#9ca3af',
+    2:'#6366f1', 3:'#6366f1', 4:'#6366f1',
+    5:'#f59e0b', 6:'#14b8a6', 7:'#d4537e',
+  };
+  const STAGE_GROUPS = [
+    {label:'Setup (0-1)', color:'#9ca3af'},
+    {label:'Design (2-4)', color:'#6366f1'},
+    {label:'Construction (5)', color:'#f59e0b'},
+    {label:'Handover (6)', color:'#14b8a6'},
+    {label:'In use (7)', color:'#d4537e'},
+  ];
+
+  const NS = 'http://www.w3.org/2000/svg';
+  let selected = new Set([0,1,2,3,4,5,6,7]);
+  let colorBy = 'phase';
+
+  const tooltip = document.getElementById('tooltip');
+
+  function fmtDate(baseStr, offsetDays){
+    if(!baseStr) return null;
+    const d = new Date(baseStr + 'T00:00:00');
+    d.setDate(d.getDate() + offsetDays);
+    return d.toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
+  }
+
+  function schedule(){
+    const visible = ACTIVITIES.filter(a => selected.has(a.stage));
+    let cursor = 0;
+    visible.forEach((a, i) => {
+      const gap = (i === 0) ? 0 : (a.gap || 0);
+      a._start = cursor + gap;
+      a._end = a._start + a.dur;
+      cursor = a._end;
+    });
+    return visible;
+  }
+
+  function colorFor(a){
+    return colorBy === 'phase' ? (PHASE_COLOR[a.phase] || '#9ca3af') : (STAGE_COLOR[a.stage] || '#9ca3af');
+  }
+
+  function render(){
+    const visible = schedule();
+    const svg = document.getElementById('gantt');
+    const baseDate = document.getElementById('startDate').value;
+    svg.innerHTML = '';
+
+    if(visible.length === 0){
+      svg.setAttribute('width', 400); svg.setAttribute('height', 80);
+      const t = document.createElementNS(NS,'text');
+      t.setAttribute('x',16); t.setAttribute('y',44); t.setAttribute('fill','#93a09a'); t.setAttribute('font-size','14');
+      t.textContent = 'Select at least one RIBA stage';
+      svg.appendChild(t);
+      document.getElementById('summary').textContent = '';
+      renderLegend(); return;
+    }
+
+    const maxDay = Math.max(...visible.map(a => a._end));
+    const months = Math.round(maxDay/30*10)/10;
+    document.getElementById('summary').innerHTML =
+      '<b>' + selected.size + '</b> stage' + (selected.size>1?'s':'') +
+      ' · <b>' + visible.length + '</b> activities · <b>~' + months + '</b> months';
+
+    const labelW = 250, rowH = 26, barH = 15, pad = 16, axisH = 26, minBar = 5;
+    const innerW = Math.max(420, maxDay * 2.0);
+    const scale = innerW / Math.max(maxDay, 1);
+    const W = labelW + innerW + pad*2;
+    const H = visible.length * rowH + pad*2 + axisH;
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+
+    const months_n = Math.ceil(maxDay/30);
+    for(let m=0; m<=months_n; m++){
+      const x = pad + labelW + m*30*scale;
+      const line = document.createElementNS(NS,'line');
+      line.setAttribute('x1',x); line.setAttribute('x2',x);
+      line.setAttribute('y1',pad); line.setAttribute('y2',H-pad-axisH+8);
+      line.setAttribute('stroke','#eef1f0'); line.setAttribute('stroke-width','1');
+      svg.appendChild(line);
+      const lbl = document.createElementNS(NS,'text');
+      lbl.setAttribute('x',x); lbl.setAttribute('y',H-pad-6);
+      lbl.setAttribute('font-size','11'); lbl.setAttribute('fill','#93a09a'); lbl.setAttribute('text-anchor','middle');
+      lbl.textContent = baseDate ? fmtDate(baseDate, m*30).replace(/\s\d{4}$/, '') : ('M'+m);
+      svg.appendChild(lbl);
+    }
+
+    visible.forEach((a,i) => {
+      const y = pad + i*rowH;
+      const lbl = document.createElementNS(NS,'text');
+      lbl.setAttribute('x', pad+labelW-10); lbl.setAttribute('y', y+rowH/2+4);
+      lbl.setAttribute('font-size','12'); lbl.setAttribute('fill','#1a1a1a'); lbl.setAttribute('text-anchor','end');
+      lbl.textContent = a.name;
+      svg.appendChild(lbl);
+
+      const bx = pad+labelW + a._start*scale;
+      const bw = Math.max(minBar, a.dur*scale);
+      const rect = document.createElementNS(NS,'rect');
+      rect.setAttribute('x',bx); rect.setAttribute('y',y+(rowH-barH)/2);
+      rect.setAttribute('width',bw); rect.setAttribute('height',barH);
+      rect.setAttribute('rx',3); rect.setAttribute('fill',colorFor(a));
+      rect.style.cursor='pointer';
+      rect.addEventListener('mousemove', (e)=>showTip(e,a,baseDate));
+      rect.addEventListener('mouseleave', hideTip);
+      svg.appendChild(rect);
+
+      const dl = document.createElementNS(NS,'text');
+      dl.setAttribute('x', bx+bw+5); dl.setAttribute('y', y+rowH/2+4);
+      dl.setAttribute('font-size','11'); dl.setAttribute('fill','#93a09a');
+      dl.textContent = a.dur+'d';
+      svg.appendChild(dl);
+    });
+
+    renderLegend();
+  }
+
+  function renderLegend(){
+    const el = document.getElementById('legend');
+    el.innerHTML = '';
+    const items = colorBy === 'phase'
+      ? Object.keys(PHASE_COLOR).map(k => ({label:k, color:PHASE_COLOR[k]}))
+      : STAGE_GROUPS;
+    items.forEach(it => {
+      const s = document.createElement('span');
+      s.innerHTML = '<span class="swatch" style="background:'+it.color+'"></span>'+it.label;
+      el.appendChild(s);
+    });
+  }
+
+  function showTip(e,a,baseDate){
+    let html = '<div class="tt-title">'+a.name+'</div>';
+    html += '<div class="tt-row">Stage '+a.stage+' · '+a.phase+'</div>';
+    html += '<div class="tt-row">Duration: '+a.dur+' days</div>';
+    if(baseDate){
+      html += '<div class="tt-row">'+fmtDate(baseDate,a._start)+' → '+fmtDate(baseDate,a._end)+'</div>';
+    } else {
+      html += '<div class="tt-row">Day '+a._start+' → '+a._end+'</div>';
+    }
+    if(a.note) html += '<div class="tt-note">'+a.note+'</div>';
+    tooltip.innerHTML = html;
+    tooltip.style.opacity = '1';
+    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    let x = e.clientX + 14, yy = e.clientY + 14;
+    if(x + tw > window.innerWidth - 8) x = e.clientX - tw - 14;
+    if(yy + th > window.innerHeight - 8) yy = e.clientY - th - 14;
+    tooltip.style.left = x+'px'; tooltip.style.top = yy+'px';
+  }
+  function hideTip(){ tooltip.style.opacity = '0'; }
+
+  document.querySelectorAll('.stage-btn[data-stage]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const s = parseInt(btn.getAttribute('data-stage'));
+      if(selected.has(s)) selected.delete(s); else selected.add(s);
+      btn.classList.toggle('on', selected.has(s));
+      render();
+    });
+  });
+  document.getElementById('allBtn').addEventListener('click', ()=>{
+    selected = new Set([0,1,2,3,4,5,6,7]);
+    document.querySelectorAll('.stage-btn[data-stage]').forEach(b=>b.classList.add('on'));
+    render();
+  });
+  document.getElementById('noneBtn').addEventListener('click', ()=>{
+    selected = new Set();
+    document.querySelectorAll('.stage-btn[data-stage]').forEach(b=>b.classList.remove('on'));
+    render();
+  });
+  document.getElementById('startDate').addEventListener('change', render);
+  document.getElementById('colorBy').addEventListener('change', (e)=>{ colorBy = e.target.value; render(); });
+
+  render();
+})();
+</script>
+</body>
+</html>
